@@ -122,3 +122,8 @@ class X2Robot(LeggedRobot):
     def _reward_hip_pos(self):
         return torch.sum(torch.square(self.dof_pos[:,[1,2,7,8]]), dim=1)
     
+    def _reward_waist_pos(self):
+        # Penalize waist deviation from default position
+        # waist joints are at indices 12, 13, 14 (after the 12 leg joints)
+        return torch.sum(torch.square(self.dof_pos[:,[12,13,14]]), dim=1)
+    

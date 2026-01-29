@@ -16,13 +16,15 @@ class X2RoughCfg( LeggedRobotCfg ):
            'right_knee_joint' : 0.3,                                             
            'right_ankle_pitch_joint': -0.2,                              
            'right_ankle_roll_joint' : 0,       
-           'torso_joint' : 0.
+           'waist_yaw_joint': 0.,
+           'waist_pitch_joint': 0.,
+           'waist_roll_joint': 0.
         }
     
     class env(LeggedRobotCfg.env):
-        num_observations = 47
-        num_privileged_obs = 50
-        num_actions = 12
+        num_observations = 56
+        num_privileged_obs = 59
+        num_actions = 15
 
 
     class domain_rand(LeggedRobotCfg.domain_rand):
@@ -44,12 +46,18 @@ class X2RoughCfg( LeggedRobotCfg ):
                      'hip_pitch': 100,
                      'knee': 150,
                      'ankle': 40,
+                     'waist_yaw': 120,
+                     'waist_pitch': 120,
+                     'waist_roll': 120,
                      }  # [N*m/rad]
         damping = {  'hip_yaw': 2,
                      'hip_roll': 2,
                      'hip_pitch': 2,
                      'knee': 4,
                      'ankle': 2,
+                     'waist_yaw': 4,
+                     'waist_pitch': 4,
+                     'waist_roll': 4,
                      }  # [N*m/rad]  # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
@@ -84,6 +92,7 @@ class X2RoughCfg( LeggedRobotCfg ):
             dof_pos_limits = -5.0
             alive = 0.15
             hip_pos = -1.0
+            waist_pos = -0.5
             contact_no_vel = -0.2
             feet_swing_height = -20.0
             contact = 0.18
