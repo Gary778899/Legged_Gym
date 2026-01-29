@@ -166,3 +166,9 @@ videos
 
 # backup files
 *.bak
+
+# md files
+*.md~
+
+# txt files
+*.txt~

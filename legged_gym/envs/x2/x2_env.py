@@ -127,3 +127,21 @@ class X2Robot(LeggedRobot):
         # waist joints are at indices 12, 13, 14 (after the 12 leg joints)
         return torch.sum(torch.square(self.dof_pos[:,[12,13,14]]), dim=1)
     
+    def _reward_symmetry(self):
+        # Encourage symmetric gait: penalize differences between left and right legs
+        # X2 has 12 leg joints: 0-5 are left leg (hip_yaw, hip_roll, hip_pitch, knee, ankle_pitch, ankle_roll)
+        #                       6-11 are right leg (same order)
+        left_leg_pos = self.dof_pos[:, :6]    # Left leg joint positions
+        right_leg_pos = self.dof_pos[:, 6:12] # Right leg joint positions
+        left_leg_vel = self.dof_vel[:, :6]    # Left leg joint velocities
+        right_leg_vel = self.dof_vel[:, 6:12] # Right leg joint velocities
+        
+        # Penalize position asymmetry
+        pos_asymmetry = torch.sum(torch.square(left_leg_pos - right_leg_pos), dim=1)
+        
+        # Penalize velocity asymmetry
+        vel_asymmetry = torch.sum(torch.square(left_leg_vel - right_leg_vel), dim=1)
+        
+        # Combine both: emphasize position symmetry more than velocity
+        return pos_asymmetry + 0.1 * vel_asymmetry
+    
