@@ -92,7 +92,7 @@ class X2RoughCfg( LeggedRobotCfg ):
             contact = 0.5                   # Reduced: encourage contact but not too strong
             feet_swing_height = -5.0        # Significantly reduced: from -20 to -5
             contact_no_vel = -0.1           # Reduced: allow learning process
-            symmetry = 0.3                  # NEW: encourage symmetric left-right gait
+            symmetry = 0.003                  # NEW: encourage symmetric left-right gait
             
             # Joint and action smoothness
             hip_pos = -0.3                  # Reduced: allow more hip movement

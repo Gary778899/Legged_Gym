@@ -128,20 +128,23 @@ class X2Robot(LeggedRobot):
         return torch.sum(torch.square(self.dof_pos[:,[12,13,14]]), dim=1)
     
     def _reward_symmetry(self):
-        # Encourage symmetric gait: penalize differences between left and right legs
-        # X2 has 12 leg joints: 0-5 are left leg (hip_yaw, hip_roll, hip_pitch, knee, ankle_pitch, ankle_roll)
-        #                       6-11 are right leg (same order)
-        left_leg_pos = self.dof_pos[:, :6]    # Left leg joint positions
-        right_leg_pos = self.dof_pos[:, 6:12] # Right leg joint positions
-        left_leg_vel = self.dof_vel[:, :6]    # Left leg joint velocities
-        right_leg_vel = self.dof_vel[:, 6:12] # Right leg joint velocities
+        left_leg_pos = self.dof_pos[:, :6]
+        right_leg_pos = self.dof_pos[:, 6:12]
+        left_leg_vel = self.dof_vel[:, :6]
+        right_leg_vel = self.dof_vel[:, 6:12]
         
-        # Penalize position asymmetry
-        pos_asymmetry = torch.sum(torch.square(left_leg_pos - right_leg_pos), dim=1)
+        # 考虑相位差：左右腿相位相差0.5（对侧步态）
+        # 当相位差接近0.5时，期望的位置差异应该更大
+        phase_diff = torch.abs(self.phase_left - self.phase_right)
         
-        # Penalize velocity asymmetry
-        vel_asymmetry = torch.sum(torch.square(left_leg_vel - right_leg_vel), dim=1)
+        # 位置对称性（归一化）
+        pos_diff = torch.mean(torch.abs(left_leg_pos - right_leg_pos), dim=1)
+        pos_asymmetry = torch.exp(-2.0 * pos_diff)  # 转换为奖励形式
         
-        # Combine both: emphasize position symmetry more than velocity
-        return pos_asymmetry + 0.1 * vel_asymmetry
-    
+        # 速度对称性（相位对应时应该相似）
+        vel_diff = torch.mean(torch.abs(left_leg_vel - right_leg_vel), dim=1)
+        vel_asymmetry = torch.exp(-1.0 * vel_diff)
+        
+        # 组合奖励
+        return pos_asymmetry * 0.7 + vel_asymmetry * 0.3
+        
