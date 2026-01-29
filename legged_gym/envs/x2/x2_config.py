@@ -95,7 +95,7 @@ class X2RoughCfgPPO( LeggedRobotCfgPPO ):
         critic_hidden_dims = [32]
         activation = 'elu' # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
         # only for 'ActorCriticRecurrent':
-        rnn_type = 'lstm'
+        rnn_type = 'test'
         rnn_hidden_size = 64
         rnn_num_layers = 1
         

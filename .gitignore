@@ -163,3 +163,6 @@ logs
 
 # exported videos
 videos
+
+# backup files
+*.bak
