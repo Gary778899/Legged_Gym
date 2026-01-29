@@ -46,18 +46,18 @@ class X2RoughCfg( LeggedRobotCfg ):
                      'hip_pitch': 100,
                      'knee': 150,
                      'ankle': 40,
-                     'waist_yaw': 120,
-                     'waist_pitch': 120,
-                     'waist_roll': 120,
+                     'waist_yaw': 80,     # Lower: more compliant
+                     'waist_pitch': 80,   # Lower: more compliant
+                     'waist_roll': 80,    # Lower: more compliant
                      }  # [N*m/rad]
         damping = {  'hip_yaw': 2,
                      'hip_roll': 2,
                      'hip_pitch': 2,
                      'knee': 4,
                      'ankle': 2,
-                     'waist_yaw': 4,
-                     'waist_pitch': 4,
-                     'waist_roll': 4,
+                     'waist_yaw': 3,      # Higher: increase damping
+                     'waist_pitch': 3,    # Higher: increase damping
+                     'waist_roll': 3,     # Higher: increase damping
                      }  # [N*m/rad]  # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
@@ -78,40 +78,47 @@ class X2RoughCfg( LeggedRobotCfg ):
         base_height_target = 0.78
         
         class scales( LeggedRobotCfg.rewards.scales ):
-            tracking_lin_vel = 1.0
-            tracking_ang_vel = 0.5
-            lin_vel_z = -2.0
-            ang_vel_xy = -0.05
-            orientation = -1.0
-            base_height = -10.0
-            dof_acc = -2.5e-7
-            dof_vel = -1e-3
-            feet_air_time = 0.0
-            collision = 0.0
-            action_rate = -0.01
-            dof_pos_limits = -5.0
-            alive = 0.15
-            hip_pos = -1.0
-            waist_pos = -0.5
-            contact_no_vel = -0.2
-            feet_swing_height = -20.0
-            contact = 0.18
+            # Main objective: track velocity commands
+            tracking_lin_vel = 2.0          # Increased: main positive reward
+            tracking_ang_vel = 1.0          # Increased: encourage turning
+            
+            # Survival and stability
+            alive = 0.5                     # Increased: encourage standing
+            orientation = -0.5              # Reduced: allow more freedom
+            base_height = -1.0              # Significantly reduced: from -10 to -1
+            
+            # Gait quality
+            feet_air_time = 1.0             # Enabled: encourage foot lifting
+            contact = 0.5                   # Reduced: encourage contact but not too strong
+            feet_swing_height = -5.0        # Significantly reduced: from -20 to -5
+            contact_no_vel = -0.1           # Reduced: allow learning process
+            
+            # Joint and action smoothness
+            hip_pos = -0.3                  # Reduced: allow more hip movement
+            waist_pos = -0.1                # Reduced: allow more waist freedom
+            dof_pos_limits = -1.0           # Reduced: from -5 to -1
+            dof_vel = -5e-4                 # Reduced: decrease velocity penalty
+            dof_acc = -1e-7                 # Reduced: decrease acceleration penalty
+            action_rate = -0.005            # Reduced: allow faster action changes
+            
+            # Avoid collisions
+            lin_vel_z = -1.0                # Reduced: allow some vertical movement
+            ang_vel_xy = -0.02              # Reduced: decrease pitch/roll penalty
+            collision = -0.5                # Enabled: penalize non-foot collisions
 
 class X2RoughCfgPPO( LeggedRobotCfgPPO ):
     class policy:
-        init_noise_std = 0.8
-        actor_hidden_dims = [32]
-        critic_hidden_dims = [32]
-        activation = 'elu' # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
-        # only for 'ActorCriticRecurrent':
-        rnn_type = 'test'
-        rnn_hidden_size = 64
-        rnn_num_layers = 1
+        init_noise_std = 1.0            # Increase exploration
+        actor_hidden_dims = [128, 64, 32]
+        critic_hidden_dims = [128, 64, 32]
+        activation = 'elu'
         
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
+        learning_rate = 5e-4            # Increase learning rate
+        
     class runner( LeggedRobotCfgPPO.runner ):
-        policy_class_name = "ActorCriticRecurrent"
+        policy_class_name = "ActorCritic"
         max_iterations = 10000
         run_name = ''
         experiment_name = 'x2'
