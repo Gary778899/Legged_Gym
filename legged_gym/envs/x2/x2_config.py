@@ -46,18 +46,18 @@ class X2RoughCfg( LeggedRobotCfg ):
                      'hip_pitch': 100,
                      'knee': 150,
                      'ankle': 40,
-                     'waist_yaw': 80,     # Lower: more compliant
-                     'waist_pitch': 80,   # Lower: more compliant
-                     'waist_roll': 80,    # Lower: more compliant
+                     'waist_yaw': 80,     
+                     'waist_pitch': 80,   
+                     'waist_roll': 80,    
                      }  # [N*m/rad]
         damping = {  'hip_yaw': 2,
                      'hip_roll': 2,
                      'hip_pitch': 2,
                      'knee': 4,
                      'ankle': 2,
-                     'waist_yaw': 3,      # Higher: increase damping
-                     'waist_pitch': 3,    # Higher: increase damping
-                     'waist_roll': 3,     # Higher: increase damping
+                     'waist_yaw': 3,      
+                     'waist_pitch': 3,    
+                     'waist_roll': 3,     
                      }  # [N*m/rad]  # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
@@ -76,27 +76,33 @@ class X2RoughCfg( LeggedRobotCfg ):
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
         base_height_target = 0.78
+        gait_period = 0.8
+        gait_offset = 0.5
+        stance_threshold = 0.55
+        command_threshold = 0.1
         
         class scales( LeggedRobotCfg.rewards.scales ):
             # Main objective: track velocity commands
-            tracking_lin_vel = 2.0          # Increased: main positive reward
+            tracking_lin_vel = 2.5          # Increased: main positive reward
             tracking_ang_vel = 1.0          # Increased: encourage turning
             
             # Survival and stability
-            alive = 0.5                     # Increased: encourage standing
+            alive = 1.0                     # Increased: encourage standing
             orientation = -0.5              # Reduced: allow more freedom
             base_height = -1.0              # Significantly reduced: from -10 to -1
             
             # Gait quality
-            feet_air_time = 1.0             # Enabled: encourage foot lifting
-            contact = 0.5                   # Reduced: encourage contact but not too strong
-            feet_swing_height = -5.0        # Significantly reduced: from -20 to -5
+            feet_air_time = 0.8             # Enabled: encourage foot lifting （long step）
+            feet_gait = 0.5                   # Reduced: encourage contact but not too strong
+            feet_swing_height = -3.0        # Significantly reduced: from -20 to -5
             contact_no_vel = -0.1           # Reduced: allow learning process
-            symmetry = 0.003                  # NEW: encourage symmetric left-right gait
+            
+            foot_near = -0.1                 # Reduced: allow some leniency
+            joint_mirror = -0.1              # Reduced: allow asymmetry
             
             # Joint and action smoothness
             hip_pos = -0.3                  # Reduced: allow more hip movement
-            waist_pos = -0.1                # Reduced: allow more waist freedom
+            waist_pos = -0.3                # Reduced: allow more waist freedom
             dof_pos_limits = -1.0           # Reduced: from -5 to -1
             dof_vel = -5e-4                 # Reduced: decrease velocity penalty
             dof_acc = -1e-7                 # Reduced: decrease acceleration penalty

@@ -81,19 +81,9 @@ if __name__ == "__main__":
         start = time.time()
         while viewer.is_running() and time.time() - start < simulation_duration:
             step_start = time.time()
-            # Extract only the first num_actions joints (leg joints for X2)
+            # Control all joints using PD controller
             tau = pd_control(target_dof_pos, d.qpos[7:7+num_actions], kps, np.zeros_like(kds), d.qvel[6:6+num_actions], kds)
             d.ctrl[:num_actions] = tau
-
-            # Add torso stabilization: keep waist joints at neutral position (0 degrees)
-            # Indices in qpos/qvel for waist joints (after legs): 12, 13, 14
-            if num_actions == 12:  # Only for leg-only control
-                waist_kp = np.array([150.0, 150.0, 150.0])  # High stiffness for waist
-                waist_kd = np.array([10.0, 10.0, 10.0])     # High damping for stability
-                waist_target = np.array([0.0, 0.0, 0.0])    # Keep torso upright
-                waist_tau = pd_control(waist_target, d.qpos[7+num_actions:7+num_actions+3], 
-                                      waist_kp, np.zeros(3), d.qvel[6+num_actions:6+num_actions+3], waist_kd)
-                d.ctrl[num_actions:num_actions+3] = waist_tau
             
             # mj_step can be replaced with code that also evaluates
             # a policy and applies a control signal before stepping the physics.
@@ -103,7 +93,7 @@ if __name__ == "__main__":
             if counter % control_decimation == 0:
                 # Apply control signal here.
 
-                # create observation - only use the first num_actions joints (leg joints for X2)
+                # Create observation - use all joints
                 qj = d.qpos[7:7+num_actions]
                 dqj = d.qvel[6:6+num_actions]
                 quat = d.qpos[3:7]
