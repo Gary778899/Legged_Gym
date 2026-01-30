@@ -46,7 +46,7 @@ class X2FlatCfg( LeggedRobotCfg ):
                      'hip_pitch': 100,
                      'knee': 150,
                      'ankle': 40,
-                     'waist_yaw': 80,     
+                     'waist_yaw': 110,    
                      'waist_pitch': 120,  
                      'waist_roll': 120,   
                      }  # [N*m/rad]
@@ -55,7 +55,7 @@ class X2FlatCfg( LeggedRobotCfg ):
                      'hip_pitch': 2,
                      'knee': 4,
                      'ankle': 2,
-                     'waist_yaw': 3,      
+                     'waist_yaw': 6,      
                      'waist_pitch': 5,    
                      'waist_roll': 5,     
                      }  # [N*m/rad]  # [N*m*s/rad]
@@ -80,7 +80,8 @@ class X2FlatCfg( LeggedRobotCfg ):
         gait_offset = 0.5
         stance_threshold = 0.55
         command_threshold = 0.1
-        feet_width_target = 0.28
+        feet_width_target = 0.25
+        yaw_command_threshold = 0.3
         step_length_target = 0.16
         step_length_sigma = 0.05
         
@@ -104,7 +105,7 @@ class X2FlatCfg( LeggedRobotCfg ):
             
             # Stance width
             foot_near = 0.0                  # Disable: this term repels feet when too close (tends to widen stance)
-            feet_width = -0.2                # Penalize deviation from rewards.feet_width_target
+            feet_width = -0.3                # Penalize deviation from rewards.feet_width_target
             joint_mirror = -0.1              # Reduced: allow asymmetry
 
             # Step quality
@@ -125,6 +126,9 @@ class X2FlatCfg( LeggedRobotCfg ):
 
             # Energy
             torques = -1.0e-5               # Helps reduce violent upper-body motion
+
+            # Upper-body yaw stability (mainly affects shoulder left/right swing)
+            waist_yaw_vel = -0.002          # Penalize waist yaw oscillation (gated off during turning)
 
 class X2FlatCfgPPO( LeggedRobotCfgPPO ):
     class policy:

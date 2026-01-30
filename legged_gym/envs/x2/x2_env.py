@@ -139,6 +139,15 @@ class X2Robot(LeggedRobot):
         err = err * weights
         return torch.sum(err * err, dim=1)
 
+    def _reward_waist_yaw_vel(self):
+        # Penalize oscillatory waist yaw (helps reduce left/right shoulder swing).
+        # Gated off during turning commands to avoid fighting intentional yaw.
+        yaw_cmd_thresh = float(getattr(self.cfg.rewards, "yaw_command_threshold", 0.3))
+        not_turning = torch.abs(self.commands[:, 2]) < yaw_cmd_thresh
+        idx = torch.tensor([12], device=self.device)  # waist_yaw
+        vel = self.dof_vel[:, idx]
+        return torch.sum(torch.square(vel), dim=1) * not_turning
+
     def _reward_foot_near(self, threshold: float = 0.2):
         """
         Penalizes the robot when its feet are too close together in the horizontal plane.
@@ -181,6 +190,10 @@ class X2Robot(LeggedRobot):
         penalty *= torch.norm(self.commands[:, :2], dim=1) > float(self.cfg.rewards.command_threshold)
         return penalty
 
+    """
+    Gait rewards.
+    """
+    
     def _reward_step_length(self):
         """Reward landing the swing foot ahead of the stance foot.
 
@@ -226,10 +239,6 @@ class X2Robot(LeggedRobot):
         right_rew = torch.exp(-torch.square(right_err) / sigma) * right_mask.float()
 
         return left_rew + right_rew
-
-    """
-    Gait rewards.
-    """
 
     def _reward_feet_gait(self):
         """
