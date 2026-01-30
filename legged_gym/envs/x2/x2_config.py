@@ -1,6 +1,6 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-class X2RoughCfg( LeggedRobotCfg ):
+class X2FlatCfg( LeggedRobotCfg ):
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.8] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
@@ -88,7 +88,9 @@ class X2RoughCfg( LeggedRobotCfg ):
             
             # Survival and stability
             alive = 1.0                     # Increased: encourage standing
-            orientation = -0.5              # Reduced: allow more freedom
+            orientation = -2.0              # Stronger: discourage overall tilt (roll/pitch)
+            base_pitch = -2.0               # New: directly penalize lean forward/back
+            base_roll = -0.5                # New: mild left/right uprightness
             base_height = -1.0              # Significantly reduced: from -10 to -1
             
             # Gait quality
@@ -102,7 +104,7 @@ class X2RoughCfg( LeggedRobotCfg ):
             
             # Joint and action smoothness
             hip_pos = -0.3                  # Reduced: allow more hip movement
-            waist_pos = -0.3                # Reduced: allow more waist freedom
+            waist_pos = -0.8                # Stronger: keep torso straighter (pitch/roll only)
             dof_pos_limits = -1.0           # Reduced: from -5 to -1
             dof_vel = -5e-4                 # Reduced: decrease velocity penalty
             dof_acc = -1e-7                 # Reduced: decrease acceleration penalty
@@ -113,7 +115,7 @@ class X2RoughCfg( LeggedRobotCfg ):
             ang_vel_xy = -0.02              # Reduced: decrease pitch/roll penalty
             collision = -0.5                # Enabled: penalize non-foot collisions
 
-class X2RoughCfgPPO( LeggedRobotCfgPPO ):
+class X2FlatCfgPPO( LeggedRobotCfgPPO ):
     class policy:
         init_noise_std = 1.0            # Increase exploration
         actor_hidden_dims = [128, 64, 32]
