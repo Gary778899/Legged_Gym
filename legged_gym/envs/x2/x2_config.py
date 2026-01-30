@@ -47,8 +47,8 @@ class X2FlatCfg( LeggedRobotCfg ):
                      'knee': 150,
                      'ankle': 40,
                      'waist_yaw': 80,     
-                     'waist_pitch': 80,   
-                     'waist_roll': 80,    
+                     'waist_pitch': 120,  
+                     'waist_roll': 120,   
                      }  # [N*m/rad]
         damping = {  'hip_yaw': 2,
                      'hip_roll': 2,
@@ -56,8 +56,8 @@ class X2FlatCfg( LeggedRobotCfg ):
                      'knee': 4,
                      'ankle': 2,
                      'waist_yaw': 3,      
-                     'waist_pitch': 3,    
-                     'waist_roll': 3,     
+                     'waist_pitch': 5,    
+                     'waist_roll': 5,     
                      }  # [N*m/rad]  # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
@@ -81,6 +81,8 @@ class X2FlatCfg( LeggedRobotCfg ):
         stance_threshold = 0.55
         command_threshold = 0.1
         feet_width_target = 0.28
+        step_length_target = 0.16
+        step_length_sigma = 0.05
         
         class scales( LeggedRobotCfg.rewards.scales ):
             # Main objective: track velocity commands
@@ -91,7 +93,7 @@ class X2FlatCfg( LeggedRobotCfg ):
             alive = 1.0                     # Increased: encourage standing
             orientation = -2.0              # Stronger: discourage overall tilt (roll/pitch)
             base_pitch = -2.0               # New: directly penalize lean forward/back
-            base_roll = -0.5                # New: mild left/right uprightness
+            base_roll = -1.2                # Stronger: discourage left/right sway
             base_height = -1.0              # Significantly reduced: from -10 to -1
             
             # Gait quality
@@ -104,6 +106,9 @@ class X2FlatCfg( LeggedRobotCfg ):
             foot_near = 0.0                  # Disable: this term repels feet when too close (tends to widen stance)
             feet_width = -0.2                # Penalize deviation from rewards.feet_width_target
             joint_mirror = -0.1              # Reduced: allow asymmetry
+
+            # Step quality
+            step_length = 0.4                # Reward forward foot placement at touchdown
             
             # Joint and action smoothness
             hip_pos = -0.3                  # Reduced: allow more hip movement
@@ -115,8 +120,11 @@ class X2FlatCfg( LeggedRobotCfg ):
             
             # Avoid collisions
             lin_vel_z = -1.0                # Reduced: allow some vertical movement
-            ang_vel_xy = -0.02              # Reduced: decrease pitch/roll penalty
+            ang_vel_xy = -0.08              # Stronger: reduce torso wobble (roll/pitch angular velocity)
             collision = -0.5                # Enabled: penalize non-foot collisions
+
+            # Energy
+            torques = -1.0e-5               # Helps reduce violent upper-body motion
 
 class X2FlatCfgPPO( LeggedRobotCfgPPO ):
     class policy:

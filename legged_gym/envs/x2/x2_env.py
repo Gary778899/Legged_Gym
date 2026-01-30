@@ -2,6 +2,7 @@
 from legged_gym.envs.base.legged_robot import LeggedRobot
 
 from isaacgym.torch_utils import *
+from isaacgym.torch_utils import quat_rotate_inverse
 from isaacgym import gymtorch, gymapi, gymutil
 import torch
 import numpy as np
@@ -51,6 +52,9 @@ class X2Robot(LeggedRobot):
         self._init_foot()
         self.phase = torch.zeros(self.num_envs, device=self.device)
         self.leg_phase = torch.zeros(self.num_envs, self.feet_num, device=self.device)
+        self._step_last_contacts = torch.zeros(
+            (self.num_envs, self.feet_num), dtype=torch.bool, device=self.device, requires_grad=False
+        )
         
 
     def update_feet_state(self):
@@ -172,7 +176,56 @@ class X2Robot(LeggedRobot):
         # Use lateral (Y-axis) separation only so we don't penalize normal fore-aft stepping.
         distance_y = torch.abs(left_foot_pos[:, 1] - right_foot_pos[:, 1])
         target = float(self.cfg.rewards.feet_width_target)
-        return torch.square(distance_y - target)
+        penalty = torch.square(distance_y - target)
+        # Only shape width when actually walking; avoid fighting stand-still behavior.
+        penalty *= torch.norm(self.commands[:, :2], dim=1) > float(self.cfg.rewards.command_threshold)
+        return penalty
+
+    def _reward_step_length(self):
+        """Reward landing the swing foot ahead of the stance foot.
+
+        This discourages the 'shuffle then bring feet parallel' behavior by explicitly
+        encouraging a forward placement at touchdown that matches the gait phase.
+        """
+        if self.feet_num < 2:
+            return torch.zeros(self.num_envs, device=self.device)
+
+        # Contact detection with simple filtering
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.0  # (num_envs, 2)
+        contact_filt = torch.logical_or(contact, self._step_last_contacts)
+        first_contact = (~self._step_last_contacts) & contact_filt
+        self._step_last_contacts = contact
+
+        # Feet positions in base frame
+        rel = self.feet_pos - self.root_states[:, :3].unsqueeze(1)  # (num_envs, 2, 3)
+        rel_flat = rel.reshape(-1, 3)
+        quat_rep = self.base_quat.repeat_interleave(self.feet_num, dim=0)
+        rel_body = quat_rotate_inverse(quat_rep, rel_flat).reshape(self.num_envs, self.feet_num, 3)
+        feet_x = rel_body[:, :, 0]
+
+        delta_x = feet_x[:, 0] - feet_x[:, 1]  # left - right
+
+        stance_threshold = float(self.stance_threshold)
+        is_stance_expected = self.leg_phase < stance_threshold  # (num_envs, 2)
+        left_swing_expected = ~is_stance_expected[:, 0]
+        right_swing_expected = ~is_stance_expected[:, 1]
+
+        cmd_ok = torch.norm(self.commands[:, :2], dim=1) > float(self.cfg.rewards.command_threshold)
+
+        target = float(self.cfg.rewards.step_length_target)
+        sigma = float(self.cfg.rewards.step_length_sigma)
+
+        # When left lands, want left ahead of right by +target (delta_x ~ +target)
+        left_mask = first_contact[:, 0] & left_swing_expected & cmd_ok
+        left_err = delta_x - target
+        left_rew = torch.exp(-torch.square(left_err) / sigma) * left_mask.float()
+
+        # When right lands, want right ahead of left by +target (delta_x ~ -target)
+        right_mask = first_contact[:, 1] & right_swing_expected & cmd_ok
+        right_err = (-delta_x) - target
+        right_rew = torch.exp(-torch.square(right_err) / sigma) * right_mask.float()
+
+        return left_rew + right_rew
 
     """
     Gait rewards.
