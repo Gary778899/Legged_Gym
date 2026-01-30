@@ -159,6 +159,21 @@ class X2Robot(LeggedRobot):
         
         return reward
 
+    def _reward_feet_width(self):
+        """Penalize deviation from a target horizontal distance between the feet.
+
+        This is a simple way to tune stance width (too wide vs too narrow).
+        """
+        if self.feet_num < 2:
+            return torch.zeros(self.num_envs, device=self.device)
+
+        left_foot_pos = self.feet_pos[:, 0, :]
+        right_foot_pos = self.feet_pos[:, 1, :]
+        # Use lateral (Y-axis) separation only so we don't penalize normal fore-aft stepping.
+        distance_y = torch.abs(left_foot_pos[:, 1] - right_foot_pos[:, 1])
+        target = float(self.cfg.rewards.feet_width_target)
+        return torch.square(distance_y - target)
+
     """
     Gait rewards.
     """

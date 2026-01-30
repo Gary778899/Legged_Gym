@@ -80,6 +80,7 @@ class X2FlatCfg( LeggedRobotCfg ):
         gait_offset = 0.5
         stance_threshold = 0.55
         command_threshold = 0.1
+        feet_width_target = 0.28
         
         class scales( LeggedRobotCfg.rewards.scales ):
             # Main objective: track velocity commands
@@ -94,12 +95,14 @@ class X2FlatCfg( LeggedRobotCfg ):
             base_height = -1.0              # Significantly reduced: from -10 to -1
             
             # Gait quality
-            feet_air_time = 0.8             # Enabled: encourage foot lifting （long step）
+            feet_air_time = 1.2             # Encourage longer swing/steps
             feet_gait = 0.5                   # Reduced: encourage contact but not too strong
-            feet_swing_height = -3.0        # Significantly reduced: from -20 to -5
+            feet_swing_height = -5.0        # Stronger: enforce swing clearance target
             contact_no_vel = -0.1           # Reduced: allow learning process
             
-            foot_near = -0.1                 # Reduced: allow some leniency
+            # Stance width
+            foot_near = 0.0                  # Disable: this term repels feet when too close (tends to widen stance)
+            feet_width = -0.2                # Penalize deviation from rewards.feet_width_target
             joint_mirror = -0.1              # Reduced: allow asymmetry
             
             # Joint and action smoothness
@@ -108,7 +111,7 @@ class X2FlatCfg( LeggedRobotCfg ):
             dof_pos_limits = -1.0           # Reduced: from -5 to -1
             dof_vel = -5e-4                 # Reduced: decrease velocity penalty
             dof_acc = -1e-7                 # Reduced: decrease acceleration penalty
-            action_rate = -0.005            # Reduced: allow faster action changes
+            action_rate = -0.05             # Stronger smoothing to reduce jittery stepping
             
             # Avoid collisions
             lin_vel_z = -1.0                # Reduced: allow some vertical movement
