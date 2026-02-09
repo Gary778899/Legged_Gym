@@ -31,9 +31,16 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
 if __name__ == "__main__":
     # get config file name from command line
     import argparse
+    import os
 
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file", type=str, help="config file name in the config folder")
+    parser.add_argument("--record", action="store_true", help="Record video from the track camera")
+    parser.add_argument("--camera", type=str, default="track", help="Camera name to use for recording")
+    parser.add_argument("--output_file", type=str, default="recorded_video.mp4", help="Output video file (default: recorded_video.mp4)")
+    parser.add_argument("--video_width", type=int, default=1920, help="Video width for recording (default: 1920)")
+    parser.add_argument("--video_height", type=int, default=1080, help="Video height for recording (default: 1080)")
+    parser.add_argument("--record_fps", type=int, default=30, help="Video FPS - records every Nth frame to match this (default: 30)")
     args = parser.parse_args()
     config_file = args.config_file
     with open(f"{LEGGED_GYM_ROOT_DIR}/deploy/deploy_mujoco/configs/{config_file}", "r") as f:
@@ -76,9 +83,60 @@ if __name__ == "__main__":
     # load policy
     policy = torch.jit.load(policy_path)
 
+    # Setup frame recording if enabled
+    if args.record:
+        # Import cv2 only when recording is needed
+        try:
+            import cv2
+        except ImportError:
+            print("Error: OpenCV (cv2) is required for video recording. Install it with: pip install opencv-python")
+            exit(1)
+        
+        # Calculate frame skip to achieve target FPS
+        # simulation_dt = 0.005, so steps_per_sec = 200
+        # To get target FPS output: frame_skip = steps_per_sec / target_fps = 200 / 30 ≈ 6-7
+        steps_per_sec = 1.0 / simulation_dt
+        frame_skip = max(1, int(steps_per_sec / args.record_fps))
+        actual_record_fps = steps_per_sec / frame_skip
+        
+        # Create video writer
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(args.output_file, fourcc, args.record_fps, (args.video_width, args.video_height))
+        
+        print(f"Recording video to: {args.output_file}")
+        print(f"  Resolution: {args.video_width}x{args.video_height}")
+        print(f"  Target FPS: {args.record_fps} (actual: {actual_record_fps:.1f})")
+        print(f"  Recording every {frame_skip} simulation step(s)")
+        
+        # Get camera ID
+        try:
+            camera_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_CAMERA, args.camera)
+        except:
+            print(f"Warning: Camera '{args.camera}' not found, using default camera")
+            camera_id = -1
+        
+        # Create offscreen renderer with specified resolution
+        try:
+            renderer = mujoco.Renderer(m, height=args.video_height, width=args.video_width)
+        except ValueError as e:
+            print(f"Error: {e}")
+            print(f"\nTip: If framebuffer is still too small, you can specify lower resolution with:")
+            print(f"  python deploy/deploy_mujoco/deploy_mujoco.py x2.yaml --record --video_width 640 --video_height 480")
+            exit(1)
+        
+        frame_count = 0
+    else:
+        renderer = None
+        camera_id = None
+        frame_count = 0
+        frame_skip = 1
+        out = None
+
     with mujoco.viewer.launch_passive(m, d) as viewer:
         # Close the viewer automatically after simulation_duration wall-seconds.
         start = time.time()
+        if args.record:
+            print(f"Recording started. Max duration: {simulation_duration}s. Close viewer to stop early.")
         while viewer.is_running() and time.time() - start < simulation_duration:
             step_start = time.time()
             # Control all joints using PD controller
@@ -126,7 +184,36 @@ if __name__ == "__main__":
             # Pick up changes to the physics state, apply perturbations, update options from GUI.
             viewer.sync()
 
+            # Record frame if enabled
+            if args.record and renderer is not None:
+                # Record every Nth frame based on target FPS
+                if counter % frame_skip == 0:
+                    renderer.update_scene(d, camera=camera_id)
+                    pixels = renderer.render()
+                    
+                    # Convert RGB to BGR for OpenCV
+                    frame_bgr = cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR)
+                    out.write(frame_bgr)
+                    frame_count += 1
+
             # Rudimentary time keeping, will drift relative to wall clock.
             time_until_next_step = m.opt.timestep - (time.time() - step_start)
             if time_until_next_step > 0:
                 time.sleep(time_until_next_step)
+        
+        # Calculate elapsed time
+        elapsed_time = time.time() - start
+        
+        # Print recording summary and cleanup
+        if args.record:
+            # Release video writer
+            out.release()
+            
+            actual_fps = frame_count / elapsed_time if elapsed_time > 0 else 0
+            print(f"\n{'='*60}")
+            print(f"Video recording complete!")
+            print(f"  Frames recorded: {frame_count}")
+            print(f"  Duration: {elapsed_time:.2f}s / {simulation_duration}s")
+            print(f"  Average FPS: {actual_fps:.1f}")
+            print(f"  Output file: {args.output_file}")
+            print(f"{'='*60}")
