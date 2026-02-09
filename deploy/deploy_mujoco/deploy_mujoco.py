@@ -97,16 +97,19 @@ if __name__ == "__main__":
         # To get target FPS output: frame_skip = steps_per_sec / target_fps = 200 / 30 ≈ 6-7
         steps_per_sec = 1.0 / simulation_dt
         frame_skip = max(1, int(steps_per_sec / args.record_fps))
-        actual_record_fps = steps_per_sec / frame_skip
         
-        # Create video writer
+        # The INTENDED recording FPS is based on simulation steps, not wall-clock time
+        # This ensures video plays at the correct simulation speed regardless of rendering speed
+        intended_fps = steps_per_sec / frame_skip
+        
+        # Create video writer with the INTENDED FPS (not target_fps which may not match due to rendering)
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(args.output_file, fourcc, args.record_fps, (args.video_width, args.video_height))
+        out = cv2.VideoWriter(args.output_file, fourcc, intended_fps, (args.video_width, args.video_height))
         
         print(f"Recording video to: {args.output_file}")
         print(f"  Resolution: {args.video_width}x{args.video_height}")
-        print(f"  Target FPS: {args.record_fps} (actual: {actual_record_fps:.1f})")
-        print(f"  Recording every {frame_skip} simulation step(s)")
+        print(f"  Simulation FPS: {intended_fps:.1f} (records every {frame_skip} steps)")
+        print(f"  Note: Rendering speed may vary, but playback speed will match simulation")
         
         # Get camera ID
         try:
@@ -131,6 +134,7 @@ if __name__ == "__main__":
         frame_count = 0
         frame_skip = 1
         out = None
+        intended_fps = 0
 
     with mujoco.viewer.launch_passive(m, d) as viewer:
         # Close the viewer automatically after simulation_duration wall-seconds.
@@ -209,11 +213,11 @@ if __name__ == "__main__":
             # Release video writer
             out.release()
             
-            actual_fps = frame_count / elapsed_time if elapsed_time > 0 else 0
             print(f"\n{'='*60}")
             print(f"Video recording complete!")
             print(f"  Frames recorded: {frame_count}")
-            print(f"  Duration: {elapsed_time:.2f}s / {simulation_duration}s")
-            print(f"  Average FPS: {actual_fps:.1f}")
             print(f"  Output file: {args.output_file}")
+            print(f"  Simulation time: {elapsed_time:.2f}s / {simulation_duration}s (closed early)")
+            print(f"  Video duration: {frame_count / intended_fps:.2f}s at {intended_fps:.1f} FPS")
             print(f"{'='*60}")
+            print(f"\nThe video playback speed matches the simulation speed.")
