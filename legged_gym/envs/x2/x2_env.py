@@ -2,6 +2,7 @@
 from legged_gym.envs.base.legged_robot import LeggedRobot
 
 from isaacgym.torch_utils import *
+from isaacgym.torch_utils import quat_rotate_inverse
 from isaacgym import gymtorch, gymapi, gymutil
 import torch
 import numpy as np
@@ -47,9 +48,13 @@ class X2Robot(LeggedRobot):
         
     def _init_buffers(self):
         super()._init_buffers()
+
         self._init_foot()
         self.phase = torch.zeros(self.num_envs, device=self.device)
         self.leg_phase = torch.zeros(self.num_envs, self.feet_num, device=self.device)
+        self._step_last_contacts = torch.zeros(
+            (self.num_envs, self.feet_num), dtype=torch.bool, device=self.device, requires_grad=False
+        )
         
 
     def update_feet_state(self):
@@ -125,82 +130,137 @@ class X2Robot(LeggedRobot):
 
 
     def _reward_waist_pos(self):
-        # Penalize waist deviation from default position
+        # Penalize waist pitch/roll deviation from default position.
+        # NOTE: yaw is excluded to avoid fighting turning behaviors.
         # waist joints are at indices 12, 13, 14 (after the 12 leg joints)
-        idx = torch.tensor([12,13,14], device=self.device)
+        idx = torch.tensor([13, 14], device=self.device)  # pitch, roll
         err = self.dof_pos[:, idx] - self.default_dof_pos[:, idx]
+        weights = torch.tensor([2.0, 1.0], device=self.device)  # pitch > roll
+        err = err * weights
         return torch.sum(err * err, dim=1)
+
+    def _reward_waist_yaw_vel(self):
+        # Penalize oscillatory waist yaw (helps reduce left/right shoulder swing).
+        # Gated off during turning commands to avoid fighting intentional yaw.
+        yaw_cmd_thresh = float(getattr(self.cfg.rewards, "yaw_command_threshold", 0.3))
+        not_turning = torch.abs(self.commands[:, 2]) < yaw_cmd_thresh
+        idx = torch.tensor([12], device=self.device)  # waist_yaw
+        vel = self.dof_vel[:, idx]
+        return torch.sum(torch.square(vel), dim=1) * not_turning
 
     def _reward_foot_near(self, threshold: float = 0.2):
         """
-        惩罚双脚距离过近，防止交叉和碰撞，确保稳定的支撑基面
-        
-        【设计原理】
-        1. 稳定性要求：支撑基面（两脚之间的多边形区域）需要足够大
-        2. 防碰撞：避免双脚在摆动过程中相互碰撞
-        3. 自然步态：保持合理的步宽（类似人类行走的步宽约15-20cm）
-        
-        【惩罚机制】
-        - 当双脚距离 < threshold 时，施加惩罚
-        - 距离越近，惩罚越大（线性递增）
-        - 距离 >= threshold 时，惩罚为0
-        
-        【阈值建议】
-        - X2髋宽约30-40cm
-        - 推荐阈值：0.15-0.25m
-        - 平地训练：0.2m（默认）
-        - 窄道/精确控制：0.15m
+        Penalizes the robot when its feet are too close together in the horizontal plane.
         
         Args:
-            threshold: 最小安全距离（米），默认0.2m
+            threshold: Minimum safe distance (meters), default is 0.2m
             
         Returns:
-            torch.Tensor: 每个环境的惩罚值，形状为 (num_envs,)
-                         范围: [0, threshold]，0表示无惩罚
+            torch.Tensor: Penalty value for each environment, shape (num_envs,)
+                         Range: [0, threshold], 0 means no penalty
         """
-        # 获取两只脚的位置 (num_envs, 2, 3) -> 每只脚的世界坐标(x,y,z)
-        # self.feet_pos 已在 _init_foot() 中初始化
+        # Acquire left and right foot positions
         left_foot_pos = self.feet_pos[:, 0, :]   # (num_envs, 3)
         right_foot_pos = self.feet_pos[:, 1, :]  # (num_envs, 3)
         
-        # 计算两脚之间的XY距离
+        # Calculate horizontal (XY plane) distance between feet
         distance = torch.norm((left_foot_pos - right_foot_pos)[:, :2], dim=-1)  # (num_envs,)
         
-        # 惩罚计算：当距离 < threshold 时，惩罚 = threshold - distance
-        # 使用 clamp(min=0) 确保距离 >= threshold 时惩罚为0
-        # 例如：threshold=0.2, distance=0.1 -> penalty=0.1
-        #      threshold=0.2, distance=0.25 -> penalty=0
+        # Penalty calculation: when distance < threshold, penalty = threshold - distance
+        # Use clamp(min=0) to ensure penalty is 0 when distance >= threshold
         reward = (threshold - distance).clamp(min=0)
         
         return reward
 
+    def _reward_feet_width(self):
+        """Penalize deviation from a target horizontal distance between the feet.
+
+        This is a simple way to tune stance width (too wide vs too narrow).
+        """
+        if self.feet_num < 2:
+            return torch.zeros(self.num_envs, device=self.device)
+
+        left_foot_pos = self.feet_pos[:, 0, :]
+        right_foot_pos = self.feet_pos[:, 1, :]
+        # Use lateral (Y-axis) separation only so we don't penalize normal fore-aft stepping.
+        distance_y = torch.abs(left_foot_pos[:, 1] - right_foot_pos[:, 1])
+        target = float(self.cfg.rewards.feet_width_target)
+        penalty = torch.square(distance_y - target)
+        # Only shape width when actually walking; avoid fighting stand-still behavior.
+        penalty *= torch.norm(self.commands[:, :2], dim=1) > float(self.cfg.rewards.command_threshold)
+        return penalty
+
     """
     Gait rewards.
     """
+    
+    def _reward_step_length(self):
+        """Reward landing the swing foot ahead of the stance foot.
+
+        This discourages the 'shuffle then bring feet parallel' behavior by explicitly
+        encouraging a forward placement at touchdown that matches the gait phase.
+        """
+        if self.feet_num < 2:
+            return torch.zeros(self.num_envs, device=self.device)
+
+        # Contact detection with simple filtering
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.0  # (num_envs, 2)
+        contact_filt = torch.logical_or(contact, self._step_last_contacts)
+        first_contact = (~self._step_last_contacts) & contact_filt
+        self._step_last_contacts = contact
+
+        # Feet positions in base frame
+        rel = self.feet_pos - self.root_states[:, :3].unsqueeze(1)  # (num_envs, 2, 3)
+        rel_flat = rel.reshape(-1, 3)
+        quat_rep = self.base_quat.repeat_interleave(self.feet_num, dim=0)
+        rel_body = quat_rotate_inverse(quat_rep, rel_flat).reshape(self.num_envs, self.feet_num, 3)
+        feet_x = rel_body[:, :, 0]
+
+        delta_x = feet_x[:, 0] - feet_x[:, 1]  # left - right
+
+        stance_threshold = float(self.stance_threshold)
+        is_stance_expected = self.leg_phase < stance_threshold  # (num_envs, 2)
+        left_swing_expected = ~is_stance_expected[:, 0]
+        right_swing_expected = ~is_stance_expected[:, 1]
+
+        cmd_ok = torch.norm(self.commands[:, :2], dim=1) > float(self.cfg.rewards.command_threshold)
+
+        target = float(self.cfg.rewards.step_length_target)
+        sigma = float(self.cfg.rewards.step_length_sigma)
+
+        # When left lands, want left ahead of right by +target (delta_x ~ +target)
+        left_mask = first_contact[:, 0] & left_swing_expected & cmd_ok
+        left_err = delta_x - target
+        left_rew = torch.exp(-torch.square(left_err) / sigma) * left_mask.float()
+
+        # When right lands, want right ahead of left by +target (delta_x ~ -target)
+        right_mask = first_contact[:, 1] & right_swing_expected & cmd_ok
+        right_err = (-delta_x) - target
+        right_rew = torch.exp(-torch.square(right_err) / sigma) * right_mask.float()
+
+        return left_rew + right_rew
 
     def _reward_feet_gait(self):
         """
-        奖励脚部接触模式与预期步态节奏的一致性（步态同步奖励）
+        Rewards the consistency of foot contact patterns with the expected gait rhythm (gait synchronization reward).
         
-        【参数调优指南】
-        period (步态周期):
-        - 0.5-0.7s: 快速步态，适合高速运动
-        - 0.8-1.0s: 标准步态，平衡速度和稳定性（推荐）
-        - 1.0-1.5s: 慢速步态，适合复杂地形
+        Tuning suggestions:
+        period :
+        - 0.5-0.7s: Fast gait, suitable for high-speed movement
+        - 0.8-1.0s: Standard gait, balanced speed and stability (recommended)
+        - 1.0-1.5s: Slow gait, suitable for complex terrain
         
-        offset (相位偏移):
-        - [0.0, 0.5]: 对侧步态（走步/trot），最常用
-        - [0.0, 0.0]: 同步步态（跳跃），双足同时动作
-        - [0.0, 0.25, 0.5, 0.75]: 四足步态
+        offset (phase offset):
+        - [0.0, 0.5]: Alternating gait (walk/trot), most common
         
-        stance_threshold (支撑相比例):
-        - 0.5: 支撑和摆动时间相等（50%-50%）
-        - 0.55-0.6: 更多支撑时间，更稳定（推荐）
-        - 0.4-0.45: 更多摆动时间，更快速
+        stance_threshold (stance phase ratio):
+        - 0.5: Equal stance and swing time (50%-50%)
+        - 0.55-0.6: More stance time, more stable (recommended)
+        - 0.4-0.45: More swing time, faster
         
         Returns:
-            torch.Tensor: 每个环境的奖励值，形状为 (num_envs,)
-                         范围: [0, num_feet]，满分为脚的数量
+            torch.Tensor: Reward value for each environment, shape (num_envs,)
+                         Range: [0, num_feet], full score equals number of feet
         """
         stance_threshold = self.stance_threshold
         command_threshold = self.cfg.rewards.command_threshold
@@ -217,21 +277,21 @@ class X2Robot(LeggedRobot):
 
     def _reward_joint_mirror(self, mirror_pairs: list = None):
         """
-        惩罚左右关节位置不对称，鼓励对称运动模式
-        【参数调优】
-        - 权重 -0.5 到 -2.0: 适度鼓励对称
-        - 权重 -2.0 到 -5.0: 强制对称（可能限制灵活性）
-        - 权重 0: 允许完全非对称（不推荐）
+        Penalizes asymmetry in left and right joint positions, encouraging symmetrical movement patterns.
+        Tuning suggestions:
+        - Weight -0.5 to -2.0: Moderately encourage symmetry
+        - Weight -2.0 to -5.0: Enforce symmetry (may limit flexibility)
+        - Weight 0: Allow complete asymmetry (not recommended)
         
         Args:
-            mirror_pairs: 镜像关节对的索引列表，格式为 [[left_idx, right_idx], ...]
-                         如果为None，则使用X2的默认配置
+            mirror_pairs: List of index pairs for mirrored joints, format [[left_idx, right_idx], ...]
+                         If None, the default configuration for X2 is used
             
         Returns:
-            torch.Tensor: 每个环境的惩罚值，形状为 (num_envs,)
-                         值越小越对称，0表示完美对称
+            torch.Tensor: Penalty value for each environment, shape (num_envs,)
+                         Lower values indicate more symmetry, 0 means perfect symmetry
         """
-        # 默认的X2镜像关节对（左腿vs右腿）
+        # Default X2 mirrored joint pairs (left leg vs right leg)
         if mirror_pairs is None:
             mirror_pairs = [
                 [0, 6],   # hip_yaw
@@ -242,16 +302,16 @@ class X2Robot(LeggedRobot):
                 [5, 11],  # ankle_roll
             ]
         
-        # 累加所有镜像对的位置差异平方
+        # Accumulate squared differences of all mirrored joint pairs
         reward = torch.zeros(self.num_envs, device=self.device)
         
         for left_idx, right_idx in mirror_pairs:
-            # 计算左右关节位置差的平方
-            # dof_pos 形状: (num_envs, num_dof)
+            # Calculate squared differences of left and right joint positions
+            # dof_pos shape: (num_envs, num_dof)
             pos_diff = self.dof_pos[:, left_idx] - self.dof_pos[:, right_idx]
             reward += torch.square(pos_diff)
         
-        # 归一化：除以镜像对数量，使得惩罚值不依赖于关节数
+        # Normalize by the number of mirrored pairs to make penalty independent of joint count
         reward = reward / len(mirror_pairs)
         
         return reward

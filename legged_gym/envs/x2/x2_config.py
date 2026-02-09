@@ -1,6 +1,6 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-class X2RoughCfg( LeggedRobotCfg ):
+class X2FlatCfg( LeggedRobotCfg ):
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.8] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
@@ -46,18 +46,18 @@ class X2RoughCfg( LeggedRobotCfg ):
                      'hip_pitch': 100,
                      'knee': 150,
                      'ankle': 40,
-                     'waist_yaw': 80,     
-                     'waist_pitch': 80,   
-                     'waist_roll': 80,    
+                     'waist_yaw': 110,    
+                     'waist_pitch': 120,  
+                     'waist_roll': 120,   
                      }  # [N*m/rad]
         damping = {  'hip_yaw': 2,
                      'hip_roll': 2,
                      'hip_pitch': 2,
                      'knee': 4,
                      'ankle': 2,
-                     'waist_yaw': 3,      
-                     'waist_pitch': 3,    
-                     'waist_roll': 3,     
+                     'waist_yaw': 6,      
+                     'waist_pitch': 5,    
+                     'waist_roll': 5,     
                      }  # [N*m/rad]  # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
@@ -80,6 +80,10 @@ class X2RoughCfg( LeggedRobotCfg ):
         gait_offset = 0.5
         stance_threshold = 0.55
         command_threshold = 0.1
+        feet_width_target = 0.25
+        yaw_command_threshold = 0.3
+        step_length_target = 0.16
+        step_length_sigma = 0.05
         
         class scales( LeggedRobotCfg.rewards.scales ):
             # Main objective: track velocity commands
@@ -88,32 +92,45 @@ class X2RoughCfg( LeggedRobotCfg ):
             
             # Survival and stability
             alive = 1.0                     # Increased: encourage standing
-            orientation = -0.5              # Reduced: allow more freedom
+            orientation = -2.0              # Stronger: discourage overall tilt (roll/pitch)
+            base_pitch = -2.0               # New: directly penalize lean forward/back
+            base_roll = -1.2                # Stronger: discourage left/right sway
             base_height = -1.0              # Significantly reduced: from -10 to -1
             
             # Gait quality
-            feet_air_time = 0.8             # Enabled: encourage foot lifting （long step）
+            feet_air_time = 1.2             # Encourage longer swing/steps
             feet_gait = 0.5                   # Reduced: encourage contact but not too strong
-            feet_swing_height = -3.0        # Significantly reduced: from -20 to -5
+            feet_swing_height = -5.0        # Stronger: enforce swing clearance target
             contact_no_vel = -0.1           # Reduced: allow learning process
             
-            foot_near = -0.1                 # Reduced: allow some leniency
+            # Stance width
+            foot_near = 0.0                  # Disable: this term repels feet when too close (tends to widen stance)
+            feet_width = -0.3                # Penalize deviation from rewards.feet_width_target
             joint_mirror = -0.1              # Reduced: allow asymmetry
+
+            # Step quality
+            step_length = 0.4                # Reward forward foot placement at touchdown
             
             # Joint and action smoothness
             hip_pos = -0.3                  # Reduced: allow more hip movement
-            waist_pos = -0.3                # Reduced: allow more waist freedom
+            waist_pos = -0.8                # Stronger: keep torso straighter (pitch/roll only)
             dof_pos_limits = -1.0           # Reduced: from -5 to -1
             dof_vel = -5e-4                 # Reduced: decrease velocity penalty
             dof_acc = -1e-7                 # Reduced: decrease acceleration penalty
-            action_rate = -0.005            # Reduced: allow faster action changes
+            action_rate = -0.05             # Stronger smoothing to reduce jittery stepping
             
             # Avoid collisions
             lin_vel_z = -1.0                # Reduced: allow some vertical movement
-            ang_vel_xy = -0.02              # Reduced: decrease pitch/roll penalty
+            ang_vel_xy = -0.08              # Stronger: reduce torso wobble (roll/pitch angular velocity)
             collision = -0.5                # Enabled: penalize non-foot collisions
 
-class X2RoughCfgPPO( LeggedRobotCfgPPO ):
+            # Energy
+            torques = -1.0e-5               # Helps reduce violent upper-body motion
+
+            # Upper-body yaw stability (mainly affects shoulder left/right swing)
+            waist_yaw_vel = -0.002          # Penalize waist yaw oscillation (gated off during turning)
+
+class X2FlatCfgPPO( LeggedRobotCfgPPO ):
     class policy:
         init_noise_std = 1.0            # Increase exploration
         actor_hidden_dims = [128, 64, 32]

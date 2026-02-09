@@ -646,6 +646,14 @@ class LeggedRobot(BaseTask):
         # Penalize non flat base orientation
         return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
 
+    def _reward_base_pitch(self):
+        # Penalize base pitch angle (lean forward/back)
+        return torch.square(self.rpy[:, 1])
+
+    def _reward_base_roll(self):
+        # Penalize base roll angle (lean left/right)
+        return torch.square(self.rpy[:, 0])
+
     def _reward_base_height(self):
         # Penalize base height away from target
         base_height = self.root_states[:, 2]
@@ -726,9 +734,4 @@ class LeggedRobot(BaseTask):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
 
-    def _reward_symmetry(self):
-        # Penalize left-right asymmetry in joint positions and velocities
-        # This encourages a trotting/alternating gait pattern
-        # For a biped/quadruped, compare left and right leg joints
-        # Default implementation: return zero (override in subclasses)
-        return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+

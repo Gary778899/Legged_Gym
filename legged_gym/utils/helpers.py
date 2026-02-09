@@ -1,10 +1,20 @@
 import os
 import copy
-import torch
 import numpy as np
 import random
+import sys
+import json
+import socket
+import platform
+import getpass
+from datetime import datetime
+import subprocess
+from typing import Optional
+import enum
 from isaacgym import gymapi
 from isaacgym import gymutil
+
+import torch
 
 from legged_gym import LEGGED_GYM_ROOT_DIR, LEGGED_GYM_ENVS_DIR
 
@@ -158,6 +168,141 @@ def export_policy_as_jit(actor_critic, path):
         model = copy.deepcopy(actor_critic.actor).to('cpu')
         traced_script_module = torch.jit.script(model)
         traced_script_module.save(path)
+
+
+def _try_get_git_info(cwd: str):
+    def _run(cmd):
+        return subprocess.check_output(cmd, cwd=cwd, stderr=subprocess.DEVNULL).decode().strip()
+
+    try:
+        commit = _run(["git", "rev-parse", "HEAD"])
+        branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        status = _run(["git", "status", "--porcelain"])
+        dirty = len(status) > 0
+        return {"commit": commit, "branch": branch, "dirty": dirty}
+    except Exception:
+        return None
+
+
+def _sanitize_for_serialization(obj):
+    """Convert objects to JSON/YAML friendly primitives.
+
+    Isaac Gym args/configs can contain non-serializable objects (e.g. SimType enums).
+    This makes dumps robust by converting to basic Python types.
+    """
+    if obj is None:
+        return None
+
+    # Simple primitives
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+
+    # Enum-like values (e.g. gymapi.SimType)
+    if isinstance(obj, enum.Enum):
+        return obj.name
+
+    # Containers
+    if isinstance(obj, dict):
+        return {str(k): _sanitize_for_serialization(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_sanitize_for_serialization(v) for v in obj]
+
+    # numpy
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.generic):
+        return obj.item()
+
+    # torch
+    if isinstance(obj, torch.Tensor):
+        return obj.detach().cpu().tolist()
+    if isinstance(obj, (torch.device, torch.dtype)):
+        return str(obj)
+
+    # argparse Namespace or similar
+    if hasattr(obj, "__dict__"):
+        try:
+            return _sanitize_for_serialization(vars(obj))
+        except Exception:
+            pass
+
+    # Fallback
+    try:
+        return str(obj)
+    except Exception:
+        return repr(obj)
+
+
+def save_training_config(
+        log_dir: str,
+        env_cfg=None,
+        train_cfg=None,
+        args=None,
+        extra: Optional[dict] = None,
+        write_yaml: bool = False,
+) -> None:
+    """Persist the resolved training configuration into the run log directory.
+
+    Writes:
+      - config.json: machine-friendly config dump
+      - cmd.txt: the exact command used
+
+        Notes:
+            - JSON is the source of truth.
+            - YAML is optional (opt-in via write_yaml=True).
+
+    Safe to call even when log_dir is None.
+    """
+    if log_dir is None:
+        return
+
+    os.makedirs(log_dir, exist_ok=True)
+    cwd = os.getcwd()
+    meta = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "cwd": cwd,
+        "command": " ".join(sys.argv),
+        "host": socket.gethostname(),
+        "user": getpass.getuser(),
+        "platform": platform.platform(),
+        "python": sys.version,
+        "torch": getattr(torch, "__version__", None),
+        "git": _try_get_git_info(cwd),
+    }
+
+    cfg_dump = {
+        "meta": meta,
+        "args": vars(args) if hasattr(args, "__dict__") else args,
+        "env_cfg": class_to_dict(env_cfg) if env_cfg is not None else None,
+        "train_cfg": class_to_dict(train_cfg) if train_cfg is not None else None,
+    }
+    if extra:
+        cfg_dump["extra"] = extra
+
+    cfg_dump = _sanitize_for_serialization(cfg_dump)
+
+    # Write exact command line for quick copy/paste.
+    try:
+        with open(os.path.join(log_dir, "cmd.txt"), "w", encoding="utf-8") as f:
+            f.write(meta["command"] + "\n")
+    except Exception:
+        pass
+
+    # JSON (always available)
+    with open(os.path.join(log_dir, "config.json"), "w", encoding="utf-8") as f:
+        json.dump(cfg_dump, f, indent=2, ensure_ascii=False)
+
+    # YAML (optional)
+    if write_yaml:
+        try:
+            import yaml
+
+            yaml_text = yaml.safe_dump(cfg_dump, sort_keys=False, allow_unicode=True)
+            with open(os.path.join(log_dir, "config.yaml"), "w", encoding="utf-8") as f:
+                f.write(yaml_text)
+        except Exception:
+            # YAML is optional; JSON is the source of truth.
+            pass
 
 
 class PolicyExporterLSTM(torch.nn.Module):
