@@ -1,4 +1,6 @@
 import time
+import glob
+import os
 
 import mujoco.viewer
 import mujoco
@@ -28,10 +30,22 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
     return (target_q - q) * kp + (target_dq - dq) * kd
 
 
+def resolve_policy_path(policy_path):
+    if os.path.isfile(policy_path):
+        return policy_path
+
+    matching_paths = [path for path in glob.glob(policy_path) if os.path.isfile(path)]
+    if matching_paths:
+        return max(matching_paths, key=os.path.getmtime)
+
+    raise ValueError(
+        f"The provided filename {policy_path} does not exist, and no matching exported policy was found"
+    )
+
+
 if __name__ == "__main__":
     # get config file name from command line
     import argparse
-    import os
 
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file", type=str, help="config file name in the config folder")
@@ -45,7 +59,9 @@ if __name__ == "__main__":
     config_file = args.config_file
     with open(f"{LEGGED_GYM_ROOT_DIR}/deploy/deploy_mujoco/configs/{config_file}", "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
-        policy_path = config["policy_path"].replace("{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR)
+        policy_path = resolve_policy_path(
+            config["policy_path"].replace("{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR)
+        )
         xml_path = config["xml_path"].replace("{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR)
 
         simulation_duration = config["simulation_duration"]
