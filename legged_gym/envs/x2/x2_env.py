@@ -173,21 +173,26 @@ class X2Robot(LeggedRobot):
         return reward
 
     def _reward_feet_width(self):
-        """Penalize deviation from a target horizontal distance between the feet.
-
-        This is a simple way to tune stance width (too wide vs too narrow).
-        """
+        """Penalize deviation from a target stance width in the pelvis frame."""
         if self.feet_num < 2:
             return torch.zeros(self.num_envs, device=self.device)
 
-        left_foot_pos = self.feet_pos[:, 0, :]
-        right_foot_pos = self.feet_pos[:, 1, :]
-        # Use lateral (Y-axis) separation only so we don't penalize normal fore-aft stepping.
-        distance_y = torch.abs(left_foot_pos[:, 1] - right_foot_pos[:, 1])
+        rel = self.feet_pos - self.root_states[:, :3].unsqueeze(1)
+        rel_flat = rel.reshape(-1, 3)
+        quat_rep = self.base_quat.repeat_interleave(self.feet_num, dim=0)
+        rel_body = quat_rotate_inverse(quat_rep, rel_flat).reshape(self.num_envs, self.feet_num, 3)
+
+        left_y = rel_body[:, 0, 1]
+        right_y = rel_body[:, 1, 1]
         target = float(self.cfg.rewards.feet_width_target)
-        penalty = torch.square(distance_y - target)
-        # Only shape width when actually walking; avoid fighting stand-still behavior.
-        penalty *= torch.norm(self.commands[:, :2], dim=1) > float(self.cfg.rewards.command_threshold)
+        half_target = 0.5 * target
+
+        penalty = torch.square(left_y - half_target) + torch.square(right_y + half_target)
+
+        cmd_ok = torch.norm(self.commands[:, :2], dim=1) > float(self.cfg.rewards.command_threshold)
+        is_stance_expected = self.leg_phase < float(self.stance_threshold)
+        stance_mask = torch.any(is_stance_expected, dim=1)
+        penalty *= (cmd_ok & stance_mask).float()
         return penalty
 
     """

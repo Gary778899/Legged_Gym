@@ -147,4 +147,16 @@ class X2FlatCfgPPO( LeggedRobotCfgPPO ):
         run_name = ''
         experiment_name = 'x2'
 
+
+class X2FlatNoRandCfg(X2FlatCfg):
+    class domain_rand(X2FlatCfg.domain_rand):
+        randomize_friction = False
+        randomize_base_mass = False
+        push_robots = False
+
+
+class X2FlatNoRandCfgPPO(X2FlatCfgPPO):
+    class runner(X2FlatCfgPPO.runner):
+        experiment_name = 'x2_no_rand'
+
   
