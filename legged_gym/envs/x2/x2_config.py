@@ -66,7 +66,7 @@ class X2RoughCfg( LeggedRobotCfg ):
   
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.78
+        base_height_target = 0.68
         
         class scales( LeggedRobotCfg.rewards.scales ):
             tracking_lin_vel = 1.0
