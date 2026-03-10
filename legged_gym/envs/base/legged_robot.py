@@ -147,9 +147,6 @@ class LeggedRobot(BaseTask):
         self.last_actions[env_ids] = 0.
         self.last_dof_vel[env_ids] = 0.
         self.feet_air_time[env_ids] = 0.
-        self.last_contacts[env_ids] = False
-        if hasattr(self, "_step_last_contacts"):
-            self._step_last_contacts[env_ids] = False
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
         # fill extras
@@ -649,14 +646,6 @@ class LeggedRobot(BaseTask):
         # Penalize non flat base orientation
         return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
 
-    def _reward_base_pitch(self):
-        # Penalize base pitch angle (lean forward/back)
-        return torch.square(self.rpy[:, 1])
-
-    def _reward_base_roll(self):
-        # Penalize base roll angle (lean left/right)
-        return torch.square(self.rpy[:, 0])
-
     def _reward_base_height(self):
         # Penalize base height away from target
         base_height = self.root_states[:, 2]
@@ -736,5 +725,3 @@ class LeggedRobot(BaseTask):
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
-
-

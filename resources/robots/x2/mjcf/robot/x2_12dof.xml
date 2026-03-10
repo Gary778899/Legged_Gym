@@ -1,5 +1,5 @@
 <mujoco model="x2t2.5">
-  <compiler angle='radian' eulerseq="XYZ" meshdir="./meshes"
+  <compiler angle='radian' eulerseq="XYZ" meshdir="../meshes"
     autolimits="true" />
 
   <option timestep="0.001" />
@@ -7,6 +7,9 @@
   <default>
       <default class="x2">
           <joint damping="0.0" armature="0.03" frictionloss="0.3"/>
+          <default class="visual">
+              <geom group="2" type="mesh" contype="0" conaffinity="0" density="0"/>
+          </default>
           <default class="collision">
               <geom group="3" type="mesh"/>
               <default class="foot">
