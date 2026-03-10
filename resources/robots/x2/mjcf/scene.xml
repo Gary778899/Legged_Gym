@@ -1,5 +1,5 @@
 <mujoco model="x2 scene">
-  <include file="./robot/x2_ultra_simple_collision.xml"/>
+  <include file="./robot/x2_12dof.xml"/>
 
   <statistic center="0 0 0.6" extent="1.3"/>
 
