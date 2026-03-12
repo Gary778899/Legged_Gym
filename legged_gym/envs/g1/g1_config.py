@@ -118,7 +118,7 @@ class G1RoughCfgPPO( LeggedRobotCfgPPO ):
         entropy_coef = 0.01
     class runner( LeggedRobotCfgPPO.runner ):
         policy_class_name = "ActorCriticRecurrent"
-        max_iterations = 10000
+        max_iterations = 2000
         run_name = ''
         experiment_name = 'g1'
 

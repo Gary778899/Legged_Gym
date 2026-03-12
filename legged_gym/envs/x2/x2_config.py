@@ -38,17 +38,19 @@ class X2RoughCfg( LeggedRobotCfg ):
         # PD Drive parameters:
         control_type = 'P'
           # PD Drive parameters:
-        stiffness = {'hip_yaw': 100,
-                     'hip_roll': 100,
-                     'hip_pitch': 100,
-                     'knee': 150,
-                     'ankle': 40,
+        stiffness = {'hip_yaw_joint': 30.0,
+                     'hip_roll_joint': 40.0,
+                     'hip_pitch_joint': 40.0,
+                     'knee_joint': 80.0,
+                     'ankle_pitch_joint': 40.0,
+                     'ankle_roll_joint': 20.0,
                      }  # [N*m/rad]
-        damping = {  'hip_yaw': 2,
-                     'hip_roll': 2,
-                     'hip_pitch': 2,
-                     'knee': 4,
-                     'ankle': 2,
+        damping = {  'hip_yaw_joint': 3.0,
+                     'hip_roll_joint': 4.0,
+                     'hip_pitch_joint': 4.0,
+                     'knee_joint': 8.0,
+                     'ankle_pitch_joint': 4.0,
+                     'ankle_roll_joint': 2.0,
                      }  # [N*m/rad]  # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
@@ -69,7 +71,7 @@ class X2RoughCfg( LeggedRobotCfg ):
         base_height_target = 0.68
         
         class scales( LeggedRobotCfg.rewards.scales ):
-            tracking_lin_vel = 1.0
+            tracking_lin_vel = 1.5
             tracking_ang_vel = 0.5
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
@@ -77,7 +79,7 @@ class X2RoughCfg( LeggedRobotCfg ):
             base_height = -10.0
             dof_acc = -2.5e-7
             dof_vel = -1e-3
-            feet_air_time = 0.0
+            feet_air_time = 0.01
             collision = 0.0
             action_rate = -0.01
             dof_pos_limits = -5.0
@@ -102,7 +104,7 @@ class X2RoughCfgPPO( LeggedRobotCfgPPO ):
         entropy_coef = 0.01
     class runner( LeggedRobotCfgPPO.runner ):
         policy_class_name = "ActorCriticRecurrent"
-        max_iterations = 10000
+        max_iterations = 2000
         run_name = ''
         experiment_name = 'x2'
 
