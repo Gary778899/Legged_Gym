@@ -55,6 +55,13 @@ if __name__ == "__main__":
     parser.add_argument("--video_width", type=int, default=1920, help="Video width for recording (default: 1920)")
     parser.add_argument("--video_height", type=int, default=1080, help="Video height for recording (default: 1080)")
     parser.add_argument("--record_fps", type=int, default=30, help="Video FPS - records every Nth frame to match this (default: 30)")
+    parser.add_argument(
+        "--record_time_base",
+        type=str,
+        choices=["wall", "simulation"],
+        default="wall",
+        help="Use wall time to match the viewer playback, or simulation time to normalize playback speed (default: wall)",
+    )
     args = parser.parse_args()
     config_file = args.config_file
     with open(f"{LEGGED_GYM_ROOT_DIR}/deploy/deploy_mujoco/configs/{config_file}", "r") as f:
@@ -107,25 +114,20 @@ if __name__ == "__main__":
         except ImportError:
             print("Error: OpenCV (cv2) is required for video recording. Install it with: pip install opencv-python")
             exit(1)
-        
-        # Calculate frame skip to achieve target FPS
-        # simulation_dt = 0.005, so steps_per_sec = 200
-        # To get target FPS output: frame_skip = steps_per_sec / target_fps = 200 / 30 ≈ 6-7
-        steps_per_sec = 1.0 / simulation_dt
-        frame_skip = max(1, int(steps_per_sec / args.record_fps))
-        
-        # The INTENDED recording FPS is based on simulation steps, not wall-clock time
-        # This ensures video plays at the correct simulation speed regardless of rendering speed
-        intended_fps = steps_per_sec / frame_skip
-        
-        # Create video writer with the INTENDED FPS (not target_fps which may not match due to rendering)
+
+        record_interval = 1.0 / args.record_fps
+
+        # Encode at the requested FPS and sample frames according to simulation time.
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(args.output_file, fourcc, intended_fps, (args.video_width, args.video_height))
+        out = cv2.VideoWriter(args.output_file, fourcc, args.record_fps, (args.video_width, args.video_height))
         
         print(f"Recording video to: {args.output_file}")
         print(f"  Resolution: {args.video_width}x{args.video_height}")
-        print(f"  Simulation FPS: {intended_fps:.1f} (records every {frame_skip} steps)")
-        print(f"  Note: Rendering speed may vary, but playback speed will match simulation")
+        print(f"  Video FPS: {args.record_fps:.1f}")
+        if args.record_time_base == "wall":
+            print("  Time base: wall clock (video matches what is shown in the viewer)")
+        else:
+            print("  Time base: simulation (video normalizes out rendering slowdowns)")
         
         # Get camera ID
         try:
@@ -148,16 +150,21 @@ if __name__ == "__main__":
         renderer = None
         camera_id = None
         frame_count = 0
-        frame_skip = 1
         out = None
-        intended_fps = 0
+        record_interval = 0.0
 
     with mujoco.viewer.launch_passive(m, d) as viewer:
-        # Close the viewer automatically after simulation_duration wall-seconds.
-        start = time.time()
+        wall_start = time.time()
+        sim_start = d.time
+        if args.record_time_base == "wall":
+            next_frame_time = wall_start
+        else:
+            next_frame_time = sim_start
         if args.record:
-            print(f"Recording started. Max duration: {simulation_duration}s. Close viewer to stop early.")
-        while viewer.is_running() and time.time() - start < simulation_duration:
+            print(
+                f"Recording started. Max simulated duration: {simulation_duration}s. Close viewer to stop early."
+            )
+        while viewer.is_running() and d.time - sim_start < simulation_duration:
             step_start = time.time()
             # Control all joints using PD controller
             tau = pd_control(target_dof_pos, d.qpos[7:7+num_actions], kps, np.zeros_like(kds), d.qvel[6:6+num_actions], kds)
@@ -206,23 +213,30 @@ if __name__ == "__main__":
 
             # Record frame if enabled
             if args.record and renderer is not None:
-                # Record every Nth frame based on target FPS
-                if counter % frame_skip == 0:
+                current_record_time = time.time() if args.record_time_base == "wall" else d.time
+                frames_to_write = 0
+                while current_record_time + 1e-9 >= next_frame_time:
+                    frames_to_write += 1
+                    next_frame_time += record_interval
+
+                if frames_to_write > 0:
                     renderer.update_scene(d, camera=camera_id)
                     pixels = renderer.render()
                     
                     # Convert RGB to BGR for OpenCV
                     frame_bgr = cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR)
-                    out.write(frame_bgr)
-                    frame_count += 1
+                    for _ in range(frames_to_write):
+                        out.write(frame_bgr)
+                    frame_count += frames_to_write
 
             # Rudimentary time keeping, will drift relative to wall clock.
             time_until_next_step = m.opt.timestep - (time.time() - step_start)
             if time_until_next_step > 0:
                 time.sleep(time_until_next_step)
         
-        # Calculate elapsed time
-        elapsed_time = time.time() - start
+        # Calculate elapsed time in both wall clock and simulation time.
+        elapsed_wall_time = time.time() - wall_start
+        elapsed_sim_time = d.time - sim_start
         
         # Print recording summary and cleanup
         if args.record:
@@ -233,7 +247,8 @@ if __name__ == "__main__":
             print(f"Video recording complete!")
             print(f"  Frames recorded: {frame_count}")
             print(f"  Output file: {args.output_file}")
-            print(f"  Simulation time: {elapsed_time:.2f}s / {simulation_duration}s (closed early)")
-            print(f"  Video duration: {frame_count / intended_fps:.2f}s at {intended_fps:.1f} FPS")
+            print(f"  Simulated time: {elapsed_sim_time:.2f}s / {simulation_duration}s")
+            print(f"  Wall time: {elapsed_wall_time:.2f}s")
+            print(f"  Video duration: {frame_count / args.record_fps:.2f}s at {args.record_fps:.1f} FPS")
             print(f"{'='*60}")
             print(f"\nThe video playback speed matches the simulation speed.")

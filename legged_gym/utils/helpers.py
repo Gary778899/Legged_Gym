@@ -110,6 +110,10 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
         # num envs
         if args.num_envs is not None:
             env_cfg.env.num_envs = args.num_envs
+        if getattr(args, "domain_rand", None) is not None and getattr(args, "task", None) == "x2":
+            env_cfg.domain_rand.randomize_friction = args.domain_rand
+            env_cfg.domain_rand.randomize_base_mass = args.domain_rand
+            env_cfg.domain_rand.push_robots = args.domain_rand
     if cfg_train is not None:
         if args.seed is not None:
             cfg_train.seed = args.seed
@@ -132,6 +136,8 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
 def get_args():
     custom_parameters = [
         {"name": "--task", "type": str, "default": "go2", "help": "Resume training or start testing from a checkpoint. Overrides config file if provided."},
+        {"name": "--domain_rand", "dest": "domain_rand", "action": "store_true", "default": None, "help": "Enable domain randomization overrides for X2 training. If omitted, the task config is used."},
+        {"name": "--no_domain_rand", "dest": "domain_rand", "action": "store_false", "help": "Disable domain randomization overrides for X2 training."},
         {"name": "--resume", "action": "store_true", "default": False,  "help": "Resume training from a checkpoint"},
         {"name": "--experiment_name", "type": str,  "help": "Name of the experiment to run or load. Overrides config file if provided."},
         {"name": "--run_name", "type": str,  "help": "Name of the run. Overrides config file if provided."},
