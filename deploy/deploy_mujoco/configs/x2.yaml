@@ -1,6 +1,6 @@
 # 
 #policy_path: "{LEGGED_GYM_ROOT_DIR}/logs/x2/exported/*_policies/policy_lstm_1.pt"
-policy_path: "{LEGGED_GYM_ROOT_DIR}/logs/x2_no_rand_with_noise/exported/Mar12_10-33-39_tune2policies/policy_lstm_1.pt"
+policy_path: "{LEGGED_GYM_ROOT_DIR}/logs/x2_rand_on_noise_on/exported/Mar12_20-39-00_test7.1policies/policy_lstm_1.pt"
 xml_path: "{LEGGED_GYM_ROOT_DIR}/resources/robots/x2/mjcf/scene.xml"
 
 # Total simulation time
