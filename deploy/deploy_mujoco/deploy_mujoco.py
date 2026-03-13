@@ -208,8 +208,8 @@ if __name__ == "__main__":
                 # transform action to target_dof_pos
                 target_dof_pos = action * action_scale + default_angles
 
-            # Pick up changes to the physics state, apply perturbations, update options from GUI.
-            viewer.sync()
+                # Pick up changes to the physics state, apply perturbations, update options from GUI.
+                viewer.sync()
 
             # Record frame if enabled
             if args.record and renderer is not None:
