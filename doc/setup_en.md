@@ -54,6 +54,8 @@ PyTorch is a neural network computation framework used for model training and in
 
 ```bash
 conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=12.1 -c pytorch -c nvidia
+# or with uv 
+uv pip install torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu121
 ```
 
 ### 2.2 Install Isaac Gym
