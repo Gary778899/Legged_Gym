@@ -4,17 +4,17 @@ class X2RoughCfg( LeggedRobotCfg ):
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.7] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
-           'left_hip_pitch_joint' : -0.1,
+           'left_hip_pitch_joint' : -0.248,
            'left_hip_roll_joint' : 0.0,
            'left_hip_yaw_joint' : 0.0,
-           'left_knee_joint' : 0.3,
-           'left_ankle_pitch_joint' : -0.2,
+           'left_knee_joint' : 0.5303,
+           'left_ankle_pitch_joint' : -0.2823,
            'left_ankle_roll_joint' : 0.0,
-           'right_hip_pitch_joint' : -0.1,
+           'right_hip_pitch_joint' : -0.248,
            'right_hip_roll_joint' : 0.0,
            'right_hip_yaw_joint' : 0.0,
-           'right_knee_joint' : 0.3,
-           'right_ankle_pitch_joint': -0.2,
+           'right_knee_joint' : 0.5303,
+           'right_ankle_pitch_joint': -0.2823,
            'right_ankle_roll_joint' : 0.0,
         }
     
@@ -38,18 +38,18 @@ class X2RoughCfg( LeggedRobotCfg ):
         # PD Drive parameters:
         control_type = 'P'
           # PD Drive parameters:
-        stiffness = {'hip_yaw_joint': 30.0,
-                     'hip_roll_joint': 40.0,
-                     'hip_pitch_joint': 40.0,
-                     'knee_joint': 80.0,
+        stiffness = {'hip_yaw_joint': 120.0,
+                     'hip_roll_joint': 120.0,
+                     'hip_pitch_joint': 120.0,
+                     'knee_joint': 150.0,
                      'ankle_pitch_joint': 40.0,
-                     'ankle_roll_joint': 20.0,
+                     'ankle_roll_joint': 30.0,
                      }  # [N*m/rad]
-        damping = {  'hip_yaw_joint': 3.0,
-                     'hip_roll_joint': 4.0,
-                     'hip_pitch_joint': 4.0,
-                     'knee_joint': 8.0,
-                     'ankle_pitch_joint': 4.0,
+        damping = {  'hip_yaw_joint': 5.0,
+                     'hip_roll_joint': 5.0,
+                     'hip_pitch_joint': 5.0,
+                     'knee_joint': 5.0,
+                     'ankle_pitch_joint': 3.0,
                      'ankle_roll_joint': 2.0,
                      }  # [N*m/rad]  # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
